@@ -1,0 +1,66 @@
+import socket
+import argparse
+import threading
+
+print_lock = threading.Lock()  # Evita conflito nas impressões
+
+def resolve_target(target):
+    try:
+        ip = socket.gethostbyname(target)
+        print(f"[+] Resolvendo {target} para {ip}")
+        return ip
+    except socket.gaierror:
+        print(f"[-] Não foi possível resolver {target}")
+        exit()
+
+def get_banner(sock):
+    try:
+        sock.settimeout(1)
+        banner = sock.recv(1024)
+        return banner.decode().strip()
+    except:
+        return None
+
+def scan_port(ip, port):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        result = sock.connect_ex((ip, port))
+        if result == 0:
+            with print_lock:
+                print(f"[+] Porta {port} aberta", end="")
+                banner = get_banner(sock)
+                if banner:
+                    print(f" | Banner: {banner}")
+                else:
+                    print()
+        sock.close()
+    except Exception as e:
+        with print_lock:
+            print(f"[-] Erro na porta {port}: {e}")
+
+def scan_ports(ip, start_port, end_port):
+    print(f"[+] Iniciando scan em {ip} nas portas {start_port} até {end_port} com threads...\n")
+    threads = []
+    for port in range(start_port, end_port + 1):
+        t = threading.Thread(target=scan_port, args=(ip, port))
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Scanner de Portas com Threads e Banner Grabbing")
+    parser.add_argument("target", help="IP ou domínio de destino")
+    parser.add_argument("-r", "--range", help="Intervalo de portas (ex: 20-80)", required=True)
+    args = parser.parse_args()
+
+    try:
+        start_port, end_port = map(int, args.range.split("-"))
+    except:
+        print("[-] Intervalo inválido. Use o formato 20-80.")
+        exit()
+
+    target_ip = resolve_target(args.target)
+    scan_ports(target_ip, start_port, end_port)
